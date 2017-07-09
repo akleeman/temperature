@@ -25,10 +25,12 @@ def pot_of_water(radius_m, height_m):
           # low speed flow of air over surface then less heat loss
           # over surface of the pot
           'h': 100 * area + 2 * (2 * np.pi * radius_m + area),
-          # It takes a minute and a half for the stove to heat up.
-          't_lag': 90.,
+          # A relatively low heat transfer coefficient means it takes
+          # time to heat up the element.
+          'k': 0.05,
           # The pot starts at 30 C
           'u_0' : 303.,
+          'init_time_off': 50.,
           # the ambient temperature is 25 C
           'u_env': 298.,
           'wattage': 400,
@@ -39,14 +41,18 @@ def main(args):
 
   np.random.seed(1982)
 
-  ts = np.linspace(0., 1600, 201)
+  ts = np.linspace(0., 1200, 2001)
 
   heat_on = np.mod((ts / 200).astype('int'), 2) != 1
-  heat_on[ts > 800.] = False
+  heat_on[ts >= 800.] = False
   heat_on = heat_on.astype('bool')
 
+  heat_on[np.logical_and(ts >= 800,
+                         ts <= 820)] = True
+
+  # heat_on = np.ones(ts.size)
+
   p = pot_of_water(0.10, 0.10)
-  p['s_0'] = 0.
 
   print "==============TRUE PARAMETERS====================="
   print utils.pretty_params(p)
@@ -54,13 +60,16 @@ def main(args):
 
   sig = 0.1
 
-  utils.compute_heat_source(ts, heat_on, p['t_lag'], s_0=0.)
-  utils.compute_temperature(ts, heat_on, **p)
-
-  s = np.array(list(utils.compute_heat_source(ts, heat_on, p['t_lag'], s_0=0.)))
+  s = np.array(list(utils.compute_heat_source(ts, heat_on, p['k'], p['init_time_off'])))
   u = np.array(list(utils.compute_temperature(ts, heat_on, **p)))
   # Add observation noise
   obs = u + sig * np.random.normal(size=u.size)
+  
+  fig, ax = plt.subplots(1, 2)
+  ax[0].plot(ts, u, color='black')
+  ax[0].plot(ts, obs, alpha=0.5, color='green')
+  ax[1].plot(ts, s, color='red')
+  plt.show()
   
   fig, ax = plt.subplots(1, 2)
   n = 1
@@ -68,15 +77,15 @@ def main(args):
   best_params = None
   for i in range(n):
 
-    x0 = {'t_lag': 180.,
+    x0 = {'k': 0.1,
           'c_v': 3000.,
           'volume': 1.,
           'u_0': 300., 
-          'h': 3.}
+          'h': 3.,
+          'init_time_off': 100.}
 
     fixed = {'wattage': 400,
-             'u_env': 298.,
-             's_0': 0.}
+             'u_env': 298.}
 
     optimal = utils.optimal_parameters(ts, heat_on, obs, params=x0, sig=sig, **fixed)
 
@@ -109,8 +118,8 @@ def main(args):
   ax[1].plot(ts, s, color='black')
   a1_ylim = ax[1].get_ylim()
 
-  for t_lag, u_0, u_max, h, r in sample[['t_lag', 'u_0', 'u_max', 'h', 'r']].values:
-    s_samp = np.array(list(utils.compute_heat_source(ts, heat_on, t_lag, u_0, u_max, u_env=25.)))
+  for k, u_0, u_max, h, r in sample[['k', 'u_0', 'u_max', 'h', 'r']].values:
+    s_samp = np.array(list(utils.compute_heat_source(ts, heat_on, k, u_0, u_max, u_env=25.)))
     u_samp = np.array(list(utils.compute_temperature(ts, s_samp, h, r, u_0, u_env=25.)))
     ax[0].plot(ts, u_samp, alpha=0.5, color='steelblue')
     ax[1].plot(ts, s_samp, alpha=0.5, color='steelblue')
@@ -119,10 +128,6 @@ def main(args):
   ax[1].set_ylim(a1_ylim)
 
   plt.show()
-
-  import ipdb; ipdb.set_trace()
-
-
 
 
 def create_parser(parser):

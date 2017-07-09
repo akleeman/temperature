@@ -1,0 +1,13 @@
+name: temperature
+dependencies:
+- python=2.7
+- numpy
+- scipy
+- matplotlib
+- pandas
+- pytest>=2.8.0
+- seaborn
+- ipython
+- filelock
+- pip:
+    - ipdb
